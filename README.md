@@ -1,3 +1,65 @@
+# TIFF Stack Viewer
+
+A PySide6-based application for viewing multi-page TIFF files, built using the Model-View-Controller (MVC) pattern.
+
+## Project Structure
+
+```
+.
+├── controller/
+│   └── controller.py         # Coordinates between model and view
+├── model/
+│   └── model.py             # Handles data and business logic
+├── view/
+│   └── view.py              # Handles UI components
+├── main.py                  # Application entry point
+├── requirements.txt         # Project dependencies
+└── README.md               # This file
+```
+
+## Features
+
+- Open and view multi-page TIFF files
+- Navigate through pages using a slider
+- Automatic image normalization and scaling
+- Status bar showing file information and errors
+- Modern, user-friendly interface
+- Clean MVC architecture for better maintainability
+
+## Requirements
+
+- Python 3.8 or higher
+- PySide6
+- NumPy
+- scikit-image
+
+## Installation
+
+1. Clone this repository
+2. Install the required packages:
+```bash
+pip install -r requirements.txt
+```
+
+## Usage
+
+Run the application:
+```bash
+python main.py
+```
+
+- Click "Open TIFF" to select a multi-page TIFF file
+- Use the slider to navigate through pages
+- The current page number and total pages are displayed
+- Images are automatically scaled to fit the window while maintaining aspect ratio
+
+## Notes
+
+- The application supports grayscale TIFF stacks
+- Images are automatically normalized to 8-bit for display
+- The window can be resized, and images will scale accordingly
+- The MVC architecture makes it easy to extend functionality
+
 # cell-viewer
 
 

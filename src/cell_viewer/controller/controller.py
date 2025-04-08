@@ -1,43 +1,32 @@
 """Controller module for the cell viewer application."""
 
-from ..model.model import Model
-from ..view.view import View
+from PySide6.QtCore import QObject
+from ..model.Model import Model
+from ..view.View import View
+from .PlaybackController import PlaybackController
 
-class Controller:
+class Controller(QObject):
     def __init__(self):
+        super().__init__()
         self.model = Model()
         self.view = View()
+        self.playback = PlaybackController()
         
-        # Connect signals
-        self.view.open_button.clicked.connect(self.handle_open_file)
-        self.view.slider.valueChanged.connect(self.handle_slider_change)
+        # Connect playback controller to model
+        self.playback.connect_model(self.model)
         
-    def handle_open_file(self):
-        """Handle file open button click"""
-        file_path = self.view.get_file_path()
-        if file_path:
-            success, message = self.model.load_file(file_path)
-            self.view.show_status_message(message)
-            
-            if success:
-                self.view.set_slider_range(0, self.model.total_pages - 1)
-                self.update_display()
-    
-    def handle_slider_change(self, value):
-        """Handle slider value change"""
-        if self.model.set_current_page(value):
-            self.update_display()
-    
-    def update_display(self):
-        """Update the display with current image and page info"""
-        # Update image
-        current_image = self.model.get_current_image()
-        self.view.show_image(current_image)
+        # Connect View -> Model signals
+        self.view.file_selected.connect(self.model.load_file)
+        self.view.page_changed.connect(self.model.set_current_page)
+        self.view.autoplay_toggled.connect(self.playback.set_playing)
         
-        # Update page info
-        page_info = self.model.get_page_info()
-        self.view.update_page_info(page_info['current'], page_info['total'])
-    
-    def show(self):
-        """Show the main window"""
-        self.view.show() 
+        # Connect Model -> View signals
+        self.model.image_changed.connect(self.view.show_image)
+        self.model.page_info_changed.connect(self.view.update_page_info)
+        self.model.status_changed.connect(self.view.show_status_message)
+        
+        # Connect PlaybackController -> View signals
+        self.playback.state_changed.connect(self.view.set_autoplay_state)
+        
+        # Show the view
+        self.view.set_visible(True)

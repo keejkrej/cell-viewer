@@ -2,7 +2,9 @@
 
 from PySide6.QtCore import QObject, Signal, Slot
 import numpy as np
-from tifffile import imread
+from tifffile import imread, imwrite
+import json
+import os
 
 class MainModel(QObject):
     # Define signals
@@ -10,6 +12,7 @@ class MainModel(QObject):
     frame_info_changed = Signal(int, int)  # Emits current and total frames
     status_changed = Signal(str)  # Emits status messages
     stack_loaded = Signal(bool)  # Emits when a stack is loaded or cleared
+    interval_loaded = Signal(int, int)  # Emits when interval is loaded from file
 
     def __init__(self):
         super().__init__()
@@ -17,6 +20,77 @@ class MainModel(QObject):
         self.current_frame = 0
         self.total_frames = 0
         self.file_path = None
+        self.start_frame = None
+        self.end_frame = None
+
+    def _get_interval_file_path(self):
+        """Get the path to the interval JSON file"""
+        if self.file_path is None:
+            return None
+        return os.path.splitext(self.file_path)[0] + '_interval.json'
+
+    def _load_interval(self):
+        """Load interval from JSON file"""
+        interval_file = self._get_interval_file_path()
+        if interval_file and os.path.exists(interval_file):
+            try:
+                with open(interval_file, 'r') as f:
+                    data = json.load(f)
+                    self.start_frame = data.get('start_frame')
+                    self.end_frame = data.get('end_frame')
+                    if self.start_frame is not None and self.end_frame is not None:
+                        self.interval_loaded.emit(self.start_frame, self.end_frame)
+                        return True
+            except Exception as e:
+                self.status_changed.emit(f"Error loading interval: {str(e)}")
+        return False
+
+    def _save_interval(self):
+        """Save interval to JSON file"""
+        if self.file_path is None or self.start_frame is None or self.end_frame is None:
+            return False
+            
+        interval_file = self._get_interval_file_path()
+        try:
+            with open(interval_file, 'w') as f:
+                json.dump({
+                    'start_frame': self.start_frame,
+                    'end_frame': self.end_frame
+                }, f, indent=4)
+            return True
+        except Exception as e:
+            self.status_changed.emit(f"Error saving interval: {str(e)}")
+            return False
+
+    @Slot(int, int)
+    def set_interval(self, start_frame, end_frame):
+        """Set the interval for saving"""
+        if 0 <= start_frame < self.total_frames and 0 <= end_frame < self.total_frames:
+            self.start_frame = min(start_frame, end_frame)
+            self.end_frame = max(start_frame, end_frame)
+            self._save_interval()  # Save interval to file
+            self.status_changed.emit(f"Interval set: {self.start_frame + 1} - {self.end_frame + 1}")
+            return True
+        return False
+
+    @Slot(str)
+    def save_interval(self, file_path):
+        """Save the marked interval to a new TIFF file"""
+        if self.tiff_stack is None or self.start_frame is None or self.end_frame is None:
+            self.status_changed.emit("Error: No interval marked or no stack loaded")
+            return False
+
+        try:
+            # Extract the interval from the stack
+            interval_stack = self.tiff_stack[self.start_frame:self.end_frame + 1]
+            
+            # Save to new file
+            imwrite(file_path, interval_stack)
+            self.status_changed.emit(f"Saved interval to {file_path}")
+            return True
+        except Exception as e:
+            self.status_changed.emit(f"Error saving interval: {str(e)}")
+            return False
 
     @Slot(str)
     def load_file(self, file_path):
@@ -31,6 +105,11 @@ class MainModel(QObject):
                 self.file_path = file_path
                 self.status_changed.emit(f"Loaded grayscale stack: {file_path}")
                 self.stack_loaded.emit(True)
+                # Reset interval state before trying to load
+                self.start_frame = None
+                self.end_frame = None
+                if not self._load_interval():  # If no interval file exists
+                    self.interval_loaded.emit(-1, -1)  # Signal that no interval was loaded
                 self._update_view()
                 return True
             elif len(self.tiff_stack.shape) == 4:
@@ -41,6 +120,11 @@ class MainModel(QObject):
                     self.file_path = file_path
                     self.status_changed.emit(f"Loaded RGB stack: {file_path}")
                     self.stack_loaded.emit(True)
+                    # Reset interval state before trying to load
+                    self.start_frame = None
+                    self.end_frame = None
+                    if not self._load_interval():  # If no interval file exists
+                        self.interval_loaded.emit(-1, -1)  # Signal that no interval was loaded
                     self._update_view()
                     return True
                 else:

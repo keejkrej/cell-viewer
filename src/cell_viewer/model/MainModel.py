@@ -11,7 +11,7 @@ class MainModel(QObject):
     image_changed = Signal(object)  # Emits the new image
     frame_info_changed = Signal(int, int)  # Emits current and total frames
     status_changed = Signal(str)  # Emits status messages
-    stack_loaded = Signal(bool)  # Emits when a stack is loaded or cleared
+    stack_loaded = Signal(bool, int, int)  # Emits has_stack, min_frame, max_frame
     interval_loaded = Signal(int, int)  # Emits when interval is loaded from file
 
     def __init__(self):
@@ -22,6 +22,8 @@ class MainModel(QObject):
         self.file_path = None
         self.start_frame = None
         self.end_frame = None
+        self.current_folder = None
+        self.save_folder = None
 
     def _get_interval_file_path(self):
         """Get the path to the interval JSON file"""
@@ -104,7 +106,8 @@ class MainModel(QObject):
                 self.current_frame = 0
                 self.file_path = file_path
                 self.status_changed.emit(f"Loaded grayscale stack: {file_path}")
-                self.stack_loaded.emit(True)
+                min_frame, max_frame = self.get_frame_limits()
+                self.stack_loaded.emit(True, min_frame, max_frame)
                 # Reset interval state before trying to load
                 self.start_frame = None
                 self.end_frame = None
@@ -119,7 +122,8 @@ class MainModel(QObject):
                     self.current_frame = 0
                     self.file_path = file_path
                     self.status_changed.emit(f"Loaded RGB stack: {file_path}")
-                    self.stack_loaded.emit(True)
+                    min_frame, max_frame = self.get_frame_limits()
+                    self.stack_loaded.emit(True, min_frame, max_frame)
                     # Reset interval state before trying to load
                     self.start_frame = None
                     self.end_frame = None
@@ -197,4 +201,16 @@ class MainModel(QObject):
         if self.has_stack():
             next_frame = self.get_next_frame()
             if next_frame is not None:
-                self.set_current_frame(next_frame) 
+                self.set_current_frame(next_frame)
+
+    @Slot(str)
+    def set_current_folder(self, folder_path):
+        """Set the current folder and update status"""
+        self.current_folder = folder_path
+        self.status_changed.emit(f"Selected folder: {folder_path}")
+
+    @Slot(str)
+    def set_save_folder(self, folder_path):
+        """Set the save folder and update status"""
+        self.save_folder = folder_path
+        self.status_changed.emit(f"Save folder set to: {folder_path}") 

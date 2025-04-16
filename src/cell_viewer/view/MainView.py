@@ -28,39 +28,45 @@ class MainView(QMainWindow):
         # Main widget and layout
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
-        layout = QVBoxLayout(main_widget)
+        main_layout = QVBoxLayout(main_widget)
         
         # Create matplotlib figure and canvas
         self.figure = Figure(tight_layout=True)
         self.canvas = FigureCanvas(self.figure)
         self.ax = self.figure.add_subplot(111)
         self.ax.axis('off')  # Hide axes
-        layout.addWidget(self.canvas)
+        main_layout.addWidget(self.canvas, stretch=1)  # Image area takes most space
         
-        # Controls
-        controls_layout = QHBoxLayout()
+        # File navigation controls
+        file_layout = QHBoxLayout()
         
         # Open folder button
         self.open_folder_button = QPushButton("Open Folder")
+        self.open_folder_button.setFixedWidth(100)
         self.open_folder_button.clicked.connect(self._handle_open_folder)
-        controls_layout.addWidget(self.open_folder_button)
+        file_layout.addWidget(self.open_folder_button)
         
         # Navigation buttons
         self.prev_button = QPushButton("Previous")
+        self.prev_button.setFixedWidth(100)
         self.prev_button.setEnabled(False)
         self.prev_button.clicked.connect(self._handle_prev_file)
-        controls_layout.addWidget(self.prev_button)
+        file_layout.addWidget(self.prev_button)
         
         self.next_button = QPushButton("Next")
+        self.next_button.setFixedWidth(100)
         self.next_button.setEnabled(False)
         self.next_button.clicked.connect(self._handle_next_file)
-        controls_layout.addWidget(self.next_button)
+        file_layout.addWidget(self.next_button)
         
         # Current file label
         self.file_label = QLabel("No file selected")
-        controls_layout.addWidget(self.file_label)
+        file_layout.addWidget(self.file_label)
         
-        layout.addLayout(controls_layout)
+        # Add spacer to push controls to the left
+        file_layout.addStretch()
+        
+        main_layout.addLayout(file_layout)
         
         # Frame controls
         frame_layout = QHBoxLayout()
@@ -68,8 +74,9 @@ class MainView(QMainWindow):
         # Slider
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setEnabled(False)
+        self.slider.setMaximumWidth(400)  # Set maximum width for slider
         self.slider.valueChanged.connect(self._handle_slider_change)
-        frame_layout.addWidget(self.slider)
+        frame_layout.addWidget(self.slider, stretch=1)  # Slider takes most space
         
         # Frame counter
         self.frame_label = QLabel("Frame: 0/0")
@@ -77,44 +84,60 @@ class MainView(QMainWindow):
         
         # Autoplay button
         self.autoplay_button = QPushButton("Play")
+        self.autoplay_button.setFixedWidth(100)
         self.autoplay_button.setCheckable(True)
         self.autoplay_button.setEnabled(False)
         self.autoplay_button.clicked.connect(self._handle_autoplay_toggle)
         frame_layout.addWidget(self.autoplay_button)
         
-        layout.addLayout(frame_layout)
+        # Add spacer to push controls to the left
+        frame_layout.addStretch()
+        
+        main_layout.addLayout(frame_layout)
         
         # Interval controls
         interval_layout = QHBoxLayout()
         
         # Start frame button
         self.start_frame_button = QPushButton("Mark Start")
+        self.start_frame_button.setFixedWidth(100)
         self.start_frame_button.setEnabled(False)
         self.start_frame_button.clicked.connect(self._handle_mark_start)
         interval_layout.addWidget(self.start_frame_button)
         
         # End frame button
         self.end_frame_button = QPushButton("Mark End")
+        self.end_frame_button.setFixedWidth(100)
         self.end_frame_button.setEnabled(False)
         self.end_frame_button.clicked.connect(self._handle_mark_end)
         interval_layout.addWidget(self.end_frame_button)
         
+        # Interval info label
+        self.interval_label = QLabel("Interval: Not set")
+        interval_layout.addWidget(self.interval_label, stretch=1)  # Label takes remaining space
+        
+        main_layout.addLayout(interval_layout)
+        
+        # Save controls
+        save_layout = QHBoxLayout()
+        
         # Save folder button
         self.save_folder_button = QPushButton("Set Save Folder")
+        self.save_folder_button.setFixedWidth(120)
         self.save_folder_button.clicked.connect(self._handle_set_save_folder)
-        interval_layout.addWidget(self.save_folder_button)
+        save_layout.addWidget(self.save_folder_button)
         
         # Save interval button
         self.save_interval_button = QPushButton("Save Interval")
+        self.save_interval_button.setFixedWidth(120)
         self.save_interval_button.setEnabled(False)
         self.save_interval_button.clicked.connect(self._handle_save_interval)
-        interval_layout.addWidget(self.save_interval_button)
+        save_layout.addWidget(self.save_interval_button)
         
-        # Interval info label
-        self.interval_label = QLabel("Interval: Not set")
-        interval_layout.addWidget(self.interval_label)
+        # Add spacer to push buttons to the left
+        save_layout.addStretch()
         
-        layout.addLayout(interval_layout)
+        main_layout.addLayout(save_layout)
         
         # Status bar
         self.statusBar = QStatusBar()
@@ -289,8 +312,8 @@ class MainView(QMainWindow):
         else:
             self.hide()
 
-    @Slot(bool)
-    def handle_stack_loaded(self, has_stack):
+    @Slot(bool, int, int)
+    def handle_stack_loaded(self, has_stack, min_frame, max_frame):
         """Handle stack loaded state"""
         if has_stack:
             self.slider.setEnabled(True)
@@ -298,6 +321,7 @@ class MainView(QMainWindow):
             self.start_frame_button.setEnabled(True)
             self.end_frame_button.setEnabled(True)
             self.img_display = None  # Reset image display for new stack
+            self.set_slider_range(min_frame, max_frame)
         else:
             self.slider.setEnabled(False)
             self.autoplay_button.setEnabled(False)

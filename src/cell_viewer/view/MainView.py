@@ -9,10 +9,10 @@ matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-class View(QMainWindow):
+class MainView(QMainWindow):
     # Define signals
     file_selected = Signal(str)  # Emitted when a file is selected
-    page_changed = Signal(int)   # Emitted when page/slider changes
+    frame_changed = Signal(int)   # Emitted when frame/slider changes
     autoplay_toggled = Signal(bool)  # Emitted when autoplay is toggled
 
     def __init__(self):
@@ -46,9 +46,9 @@ class View(QMainWindow):
         self.slider.valueChanged.connect(self._handle_slider_change)
         controls_layout.addWidget(self.slider)
         
-        # Page counter
-        self.page_label = QLabel("Page: 0/0")
-        controls_layout.addWidget(self.page_label)
+        # Frame counter
+        self.frame_label = QLabel("Frame: 0/0")
+        controls_layout.addWidget(self.frame_label)
         
         # Autoplay button
         self.autoplay_button = QPushButton("Play")
@@ -80,7 +80,7 @@ class View(QMainWindow):
     @Slot(int)
     def _handle_slider_change(self, value):
         """Internal slot to handle slider value changes"""
-        self.page_changed.emit(value)
+        self.frame_changed.emit(value)
 
     @Slot(bool)
     def _handle_autoplay_toggle(self, checked):
@@ -93,19 +93,34 @@ class View(QMainWindow):
         if image is None:
             return
             
-        # Clear the previous image
-        if self.img_display is not None:
-            self.img_display.remove()
+        if self.img_display is None:
+            # First time: create the image display
+            if len(image.shape) == 2:  # Grayscale
+                self.img_display = self.ax.imshow(image, cmap='gray', aspect='equal')
+            else:  # RGB
+                self.img_display = self.ax.imshow(image, aspect='equal')
+            self.figure.subplots_adjust(left=0, right=1, top=1, bottom=0)
+        else:
+            # Update existing image data
+            self.img_display.set_data(image)
+            if len(image.shape) == 2:  # Grayscale
+                self.img_display.set_clim(vmin=image.min(), vmax=image.max())
+            else:  # RGB
+                # For RGB, we don't need to set clim as the values are already normalized
+                pass
             
-        # Display new image
-        self.img_display = self.ax.imshow(image, cmap='gray')
-        self.ax.set_position([0, 0, 1, 1])  # Make image fill the figure
+        # Force the canvas to update
         self.canvas.draw()
 
     @Slot(int, int)
-    def update_page_info(self, current, total):
-        """Update the page information display"""
-        self.page_label.setText(f"Page: {current}/{total}")
+    def update_frame_info(self, current, total):
+        """Update the frame information display and slider position"""
+        self.frame_label.setText(f"Frame: {current}/{total}")
+        
+        # Update slider position without triggering valueChanged
+        self.slider.blockSignals(True)
+        self.slider.setValue(current - 1)  # Convert to 0-based index
+        self.slider.blockSignals(False)
 
     @Slot(str)
     def show_status_message(self, message):
@@ -139,7 +154,10 @@ class View(QMainWindow):
     def resizeEvent(self, event):
         """Handle window resize events"""
         super().resizeEvent(event)
-        self.canvas.draw()  # Redraw the canvas to update image scaling 
+        if self.img_display is not None:
+            # Redraw the canvas to update image scaling while maintaining aspect ratio
+            self.figure.subplots_adjust(left=0, right=1, top=1, bottom=0)
+            self.canvas.draw()
 
     @Slot(bool)
     def set_visible(self, visible):
@@ -147,4 +165,16 @@ class View(QMainWindow):
         if visible:
             self.show()
         else:
-            self.hide() 
+            self.hide()
+
+    @Slot(bool)
+    def handle_stack_loaded(self, has_stack):
+        """Handle stack loaded state"""
+        if has_stack:
+            self.slider.setEnabled(True)
+            self.autoplay_button.setEnabled(True)
+        else:
+            self.slider.setEnabled(False)
+            self.autoplay_button.setEnabled(False)
+            self.slider.setRange(0, 0)
+            self.frame_label.setText("Frame: 0/0") 

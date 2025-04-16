@@ -2,13 +2,13 @@
 
 import sys
 from PySide6.QtWidgets import QApplication
-from .controller.Controller import Controller
+from .controller.MainController import MainController
 
 def main():
     app = QApplication(sys.argv)
-    controller = Controller()
+    controller = MainController()
     controller.show()
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    main() 
+    main()

@@ -25,6 +25,10 @@ class MainModel(QObject):
         self.current_folder = None
         self.save_folder = None
 
+    # =====================================================================
+    # Private Methods
+    # =====================================================================
+
     def _get_interval_file_path(self):
         """Get the path to the interval JSON file"""
         if self.file_path is None:
@@ -63,6 +67,55 @@ class MainModel(QObject):
         except Exception as e:
             self.status_changed.emit(f"Error saving interval: {str(e)}")
             return False
+
+    def _update_view(self):
+        """Update all view-related signals"""
+        # Emit current image
+        current_image = self._get_normalized_image()
+        self.image_changed.emit(current_image)
+        
+        # Emit frame info
+        self.frame_info_changed.emit(self.current_frame + 1, self.total_frames)
+
+    def _get_normalized_image(self):
+        """Get the current frame image, normalized to 8-bit"""
+        if self.tiff_stack is None:
+            return None
+            
+        image = self.tiff_stack[self.current_frame]
+        
+        # Handle both grayscale and RGB images
+        if len(image.shape) == 2:  # Grayscale
+            if image.dtype != np.uint8:
+                image = ((image - image.min()) / (image.max() - image.min()) * 255).astype(np.uint8)
+        elif len(image.shape) == 3:  # RGB
+            if image.dtype != np.uint8:
+                # Normalize each channel independently
+                for i in range(3):
+                    channel = image[:,:,i]
+                    image[:,:,i] = ((channel - channel.min()) / (channel.max() - channel.min()) * 255).astype(np.uint8)
+            
+        return image
+
+    def _get_next_frame(self):
+        """Get the next frame number (with wrapping)"""
+        if self.tiff_stack is None:
+            return None
+        return (self.current_frame + 1) % self.total_frames
+
+    def _has_stack(self):
+        """Check if a valid stack is loaded"""
+        return self.tiff_stack is not None
+
+    def _get_frame_limits(self):
+        """Get the minimum and maximum frame numbers"""
+        if self.tiff_stack is None:
+            return 0, 0
+        return 0, self.total_frames - 1
+
+    # =====================================================================
+    # Public Methods
+    # =====================================================================
 
     @Slot(int, int)
     def set_interval(self, start_frame, end_frame):
@@ -106,7 +159,7 @@ class MainModel(QObject):
                 self.current_frame = 0
                 self.file_path = file_path
                 self.status_changed.emit(f"Loaded grayscale stack: {file_path}")
-                min_frame, max_frame = self.get_frame_limits()
+                min_frame, max_frame = self._get_frame_limits()
                 self.stack_loaded.emit(True, min_frame, max_frame)
                 # Reset interval state before trying to load
                 self.start_frame = None
@@ -122,7 +175,7 @@ class MainModel(QObject):
                     self.current_frame = 0
                     self.file_path = file_path
                     self.status_changed.emit(f"Loaded RGB stack: {file_path}")
-                    min_frame, max_frame = self.get_frame_limits()
+                    min_frame, max_frame = self._get_frame_limits()
                     self.stack_loaded.emit(True, min_frame, max_frame)
                     # Reset interval state before trying to load
                     self.start_frame = None
@@ -150,56 +203,11 @@ class MainModel(QObject):
             return True
         return False
 
-    def get_next_frame(self):
-        """Get the next frame number (with wrapping)"""
-        if self.tiff_stack is None:
-            return None
-        return (self.current_frame + 1) % self.total_frames
-
-    def has_stack(self):
-        """Check if a valid stack is loaded"""
-        return self.tiff_stack is not None
-
-    def _update_view(self):
-        """Update all view-related signals"""
-        # Emit current image
-        current_image = self._get_normalized_image()
-        self.image_changed.emit(current_image)
-        
-        # Emit frame info
-        self.frame_info_changed.emit(self.current_frame + 1, self.total_frames)
-
-    def _get_normalized_image(self):
-        """Get the current frame image, normalized to 8-bit"""
-        if self.tiff_stack is None:
-            return None
-            
-        image = self.tiff_stack[self.current_frame]
-        
-        # Handle both grayscale and RGB images
-        if len(image.shape) == 2:  # Grayscale
-            if image.dtype != np.uint8:
-                image = ((image - image.min()) / (image.max() - image.min()) * 255).astype(np.uint8)
-        elif len(image.shape) == 3:  # RGB
-            if image.dtype != np.uint8:
-                # Normalize each channel independently
-                for i in range(3):
-                    channel = image[:,:,i]
-                    image[:,:,i] = ((channel - channel.min()) / (channel.max() - channel.min()) * 255).astype(np.uint8)
-            
-        return image
-
-    def get_frame_limits(self):
-        """Get the minimum and maximum frame numbers"""
-        if self.tiff_stack is None:
-            return 0, 0
-        return 0, self.total_frames - 1
-
     @Slot()
     def advance_frame(self):
         """Handle frame advancement signal"""
-        if self.has_stack():
-            next_frame = self.get_next_frame()
+        if self._has_stack():
+            next_frame = self._get_next_frame()
             if next_frame is not None:
                 self.set_current_frame(next_frame)
 

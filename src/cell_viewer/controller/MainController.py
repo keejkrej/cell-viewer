@@ -1,6 +1,6 @@
 """Main controller module for the cell viewer application."""
 
-from PySide6.QtCore import QObject, Slot
+from PySide6.QtCore import QObject
 from ..service.PlaybackService import PlaybackService
 from ..model.MainModel import MainModel
 from ..view.MainView import MainView
@@ -8,11 +8,18 @@ from ..view.MainView import MainView
 class MainController(QObject):
     """Main controller for the cell viewer application."""
     
-    def __init__(self):
+    def __init__(self, model: MainModel, view: MainView):
+        """
+        Initialize the controller with dependencies.
+        
+        Args:
+            model (MainModel): The model instance
+            view (MainView): The view instance
+        """
         super().__init__()
-        self.model = MainModel()
-        self.view = MainView()
-        self.playback = PlaybackService(self.model, self.view)
+        self.model = model
+        self.view = view
+        self.playback = PlaybackService()
         
         # Connect model signals to view slots
         self.model.image_changed.connect(self.view.show_image)
@@ -29,11 +36,17 @@ class MainController(QObject):
         self.view.folder_selected.connect(self.model.set_current_folder)
         self.view.save_folder_selected.connect(self.model.set_save_folder)
         
-        # Connect playback signals to model slots
-        self.playback.request_advance.connect(self.model.advance_frame)
+        # Connect playback signals
+        self.view.autoplay_toggled.connect(self.playback.handle_playback_toggle)
+        self.playback.frame_advance_requested.connect(self.model.advance_frame)
+        self.playback.autoplay_state_changed.connect(self.view.set_autoplay_state)
         
         # Show the view
         self.view.set_visible(True)
+
+    # =====================================================================
+    # Public Methods
+    # =====================================================================
 
     def show(self):
         """Show the main window"""

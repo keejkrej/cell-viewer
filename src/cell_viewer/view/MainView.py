@@ -162,6 +162,10 @@ class MainView(QMainWindow):
         # Store save folder
         self.save_folder = None
 
+    # =====================================================================
+    # Private Methods
+    # =====================================================================
+
     @Slot()
     def _handle_open_folder(self):
         """Handle opening a folder"""
@@ -231,6 +235,77 @@ class MainView(QMainWindow):
     def _handle_autoplay_toggle(self, checked):
         """Internal slot to handle autoplay button toggle"""
         self.autoplay_toggled.emit(checked)
+
+    @Slot()
+    def _handle_mark_start(self):
+        """Handle marking the start frame"""
+        current_frame = self.slider.value()
+        self.start_frame = current_frame
+        self._update_interval_label()
+        self._check_save_enabled()
+        if self.end_frame is not None:
+            self.interval_marked.emit(self.start_frame, self.end_frame)
+
+    @Slot()
+    def _handle_mark_end(self):
+        """Handle marking the end frame"""
+        current_frame = self.slider.value()
+        self.end_frame = current_frame
+        self._update_interval_label()
+        self._check_save_enabled()
+        if self.start_frame is not None:
+            self.interval_marked.emit(self.start_frame, self.end_frame)
+
+    @Slot()
+    def _handle_set_save_folder(self):
+        """Handle setting the save folder"""
+        folder_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Save Folder",
+            "",
+            QFileDialog.ShowDirsOnly
+        )
+        if folder_path:
+            self.save_folder = folder_path
+            self.save_folder_selected.emit(folder_path)
+            self.statusBar.showMessage(f"Save folder set to: {folder_path}")
+
+    @Slot()
+    def _handle_save_interval(self):
+        """Handle saving the marked interval"""
+        if self.save_folder is None:
+            self.statusBar.showMessage("Please set a save folder first")
+            return
+            
+        if self.current_file_index >= 0 and self.tiff_files:
+            # Generate save filename based on current file
+            current_file = self.tiff_files[self.current_file_index]
+            base_name = os.path.splitext(current_file)[0]
+            save_path = os.path.join(self.save_folder, f"{base_name}_trimmed.tif")
+            self.save_interval_requested.emit(save_path)
+
+    def _update_interval_label(self):
+        """Update the interval label with current start/end frames"""
+        if self.start_frame is not None and self.end_frame is not None:
+            self.interval_label.setText(f"Interval: {self.start_frame + 1} - {self.end_frame + 1}")
+        elif self.start_frame is not None:
+            self.interval_label.setText(f"Start: {self.start_frame + 1}")
+        elif self.end_frame is not None:
+            self.interval_label.setText(f"End: {self.end_frame + 1}")
+        else:
+            self.interval_label.setText("Interval: Not set")
+
+    def _check_save_enabled(self):
+        """Enable/disable save button based on interval state"""
+        self.save_interval_button.setEnabled(
+            self.start_frame is not None and 
+            self.end_frame is not None and
+            self.start_frame != self.end_frame
+        )
+
+    # =====================================================================
+    # Public Methods
+    # =====================================================================
 
     @Slot(object)
     def show_image(self, image):
@@ -333,73 +408,6 @@ class MainView(QMainWindow):
             self.interval_label.setText("Interval: Not set")
             self.start_frame = None
             self.end_frame = None
-
-    @Slot()
-    def _handle_mark_start(self):
-        """Handle marking the start frame"""
-        current_frame = self.slider.value()
-        self.start_frame = current_frame
-        self._update_interval_label()
-        self._check_save_enabled()
-        if self.end_frame is not None:
-            self.interval_marked.emit(self.start_frame, self.end_frame)
-
-    @Slot()
-    def _handle_mark_end(self):
-        """Handle marking the end frame"""
-        current_frame = self.slider.value()
-        self.end_frame = current_frame
-        self._update_interval_label()
-        self._check_save_enabled()
-        if self.start_frame is not None:
-            self.interval_marked.emit(self.start_frame, self.end_frame)
-
-    @Slot()
-    def _handle_set_save_folder(self):
-        """Handle setting the save folder"""
-        folder_path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Save Folder",
-            "",
-            QFileDialog.ShowDirsOnly
-        )
-        if folder_path:
-            self.save_folder = folder_path
-            self.save_folder_selected.emit(folder_path)
-            self.statusBar.showMessage(f"Save folder set to: {folder_path}")
-
-    @Slot()
-    def _handle_save_interval(self):
-        """Handle saving the marked interval"""
-        if self.save_folder is None:
-            self.statusBar.showMessage("Please set a save folder first")
-            return
-            
-        if self.current_file_index >= 0 and self.tiff_files:
-            # Generate save filename based on current file
-            current_file = self.tiff_files[self.current_file_index]
-            base_name = os.path.splitext(current_file)[0]
-            save_path = os.path.join(self.save_folder, f"{base_name}_trimmed.tif")
-            self.save_interval_requested.emit(save_path)
-
-    def _update_interval_label(self):
-        """Update the interval label with current start/end frames"""
-        if self.start_frame is not None and self.end_frame is not None:
-            self.interval_label.setText(f"Interval: {self.start_frame + 1} - {self.end_frame + 1}")
-        elif self.start_frame is not None:
-            self.interval_label.setText(f"Start: {self.start_frame + 1}")
-        elif self.end_frame is not None:
-            self.interval_label.setText(f"End: {self.end_frame + 1}")
-        else:
-            self.interval_label.setText("Interval: Not set")
-
-    def _check_save_enabled(self):
-        """Enable/disable save button based on interval state"""
-        self.save_interval_button.setEnabled(
-            self.start_frame is not None and 
-            self.end_frame is not None and
-            self.start_frame != self.end_frame
-        )
 
     @Slot(int, int)
     def update_interval_display(self, start_frame, end_frame):

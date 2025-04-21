@@ -3,10 +3,18 @@
 import sys
 from PySide6.QtWidgets import QApplication
 from .controller.MainController import MainController
+from .model.MainModel import MainModel
+from .view.MainView import MainView
 
 def main():
     app = QApplication(sys.argv)
-    controller = MainController()
+    
+    # Create model and view instances
+    model = MainModel()
+    view = MainView()
+    
+    # Create controller with dependencies
+    controller = MainController(model, view)
     controller.show()
     sys.exit(app.exec())
 

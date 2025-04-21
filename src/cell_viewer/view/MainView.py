@@ -166,19 +166,6 @@ class MainView(QMainWindow):
     # Private Methods
     # =====================================================================
 
-    @Slot()
-    def _handle_open_folder(self):
-        """Handle opening a folder"""
-        folder_path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Folder",
-            "",
-            QFileDialog.ShowDirsOnly
-        )
-        if folder_path:
-            self.folder_selected.emit(folder_path)
-            self._load_folder(folder_path)
-
     def _load_folder(self, folder_path):
         """Load TIFF files from the selected folder"""
         self.current_folder = folder_path
@@ -201,14 +188,60 @@ class MainView(QMainWindow):
             file_path = os.path.join(self.current_folder, self.tiff_files[self.current_file_index])
             self.file_label.setText(f"File: {self.tiff_files[self.current_file_index]}")
             self.file_selected.emit(file_path)
-            
-            # Don't reset interval state here - let the model handle it
-            # The model will either load from JSON or reset if needed
 
     def _update_navigation_buttons(self):
         """Update the state of navigation buttons"""
         self.prev_button.setEnabled(self.current_file_index > 0)
         self.next_button.setEnabled(self.current_file_index < len(self.tiff_files) - 1)
+
+    def _get_file_path(self):
+        """Open file dialog and return selected file path"""
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open TIFF File",
+            "",
+            "TIFF Files (*.tif *.tiff)"
+        )
+        return file_name
+
+    def _set_slider_range(self, minimum, maximum):
+        """Set the slider range and enable it"""
+        self.slider.setRange(minimum, maximum)
+        self.slider.setEnabled(True)
+        self.autoplay_button.setEnabled(True)
+        self.slider.setValue(minimum)
+
+    def _update_interval_label(self):
+        """Update the interval label with current start/end frames"""
+        if self.start_frame is not None and self.end_frame is not None:
+            self.interval_label.setText(f"Interval: {self.start_frame + 1} - {self.end_frame + 1}")
+        elif self.start_frame is not None:
+            self.interval_label.setText(f"Start: {self.start_frame + 1}")
+        elif self.end_frame is not None:
+            self.interval_label.setText(f"End: {self.end_frame + 1}")
+        else:
+            self.interval_label.setText("Interval: Not set")
+
+    def _check_save_enabled(self):
+        """Enable/disable save button based on interval state"""
+        self.save_interval_button.setEnabled(
+            self.start_frame is not None and 
+            self.end_frame is not None and
+            self.start_frame != self.end_frame
+        )
+
+    @Slot()
+    def _handle_open_folder(self):
+        """Handle opening a folder"""
+        folder_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Folder",
+            "",
+            QFileDialog.ShowDirsOnly
+        )
+        if folder_path:
+            self.folder_selected.emit(folder_path)
+            self._load_folder(folder_path)
 
     @Slot()
     def _handle_prev_file(self):
@@ -268,13 +301,12 @@ class MainView(QMainWindow):
         if folder_path:
             self.save_folder = folder_path
             self.save_folder_selected.emit(folder_path)
-            self.statusBar.showMessage(f"Save folder set to: {folder_path}")
 
     @Slot()
     def _handle_save_interval(self):
         """Handle saving the marked interval"""
         if self.save_folder is None:
-            self.statusBar.showMessage("Please set a save folder first")
+            self.show_status_message("Please set a save folder first")
             return
             
         if self.current_file_index >= 0 and self.tiff_files:
@@ -283,25 +315,6 @@ class MainView(QMainWindow):
             base_name = os.path.splitext(current_file)[0]
             save_path = os.path.join(self.save_folder, f"{base_name}_trimmed.tif")
             self.save_interval_requested.emit(save_path)
-
-    def _update_interval_label(self):
-        """Update the interval label with current start/end frames"""
-        if self.start_frame is not None and self.end_frame is not None:
-            self.interval_label.setText(f"Interval: {self.start_frame + 1} - {self.end_frame + 1}")
-        elif self.start_frame is not None:
-            self.interval_label.setText(f"Start: {self.start_frame + 1}")
-        elif self.end_frame is not None:
-            self.interval_label.setText(f"End: {self.end_frame + 1}")
-        else:
-            self.interval_label.setText("Interval: Not set")
-
-    def _check_save_enabled(self):
-        """Enable/disable save button based on interval state"""
-        self.save_interval_button.setEnabled(
-            self.start_frame is not None and 
-            self.end_frame is not None and
-            self.start_frame != self.end_frame
-        )
 
     # =====================================================================
     # Public Methods
@@ -347,46 +360,6 @@ class MainView(QMainWindow):
         """Show a message in the status bar"""
         self.statusBar.showMessage(message)
 
-    def get_file_path(self):
-        """Open file dialog and return selected file path"""
-        file_name, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open TIFF File",
-            "",
-            "TIFF Files (*.tif *.tiff)"
-        )
-        return file_name
-
-    @Slot(int, int)
-    def set_slider_range(self, minimum, maximum):
-        """Set the slider range and enable it"""
-        self.slider.setRange(minimum, maximum)
-        self.slider.setEnabled(True)
-        self.autoplay_button.setEnabled(True)
-        self.slider.setValue(minimum)
-
-    @Slot(bool)
-    def set_autoplay_state(self, is_playing):
-        """Update the autoplay button text based on state"""
-        self.autoplay_button.setText("Pause" if is_playing else "Play")
-        self.autoplay_button.setChecked(is_playing)
-
-    def resizeEvent(self, event):
-        """Handle window resize events"""
-        super().resizeEvent(event)
-        if self.img_display is not None:
-            # Redraw the canvas to update image scaling while maintaining aspect ratio
-            self.figure.subplots_adjust(left=0, right=1, top=1, bottom=0)
-            self.canvas.draw()
-
-    @Slot(bool)
-    def set_visible(self, visible):
-        """Show or hide the window"""
-        if visible:
-            self.show()
-        else:
-            self.hide()
-
     @Slot(bool, int, int)
     def handle_stack_loaded(self, has_stack, min_frame, max_frame):
         """Handle stack loaded state"""
@@ -396,7 +369,7 @@ class MainView(QMainWindow):
             self.start_frame_button.setEnabled(True)
             self.end_frame_button.setEnabled(True)
             self.img_display = None  # Reset image display for new stack
-            self.set_slider_range(min_frame, max_frame)
+            self._set_slider_range(min_frame, max_frame)
         else:
             self.slider.setEnabled(False)
             self.autoplay_button.setEnabled(False)
@@ -423,4 +396,10 @@ class MainView(QMainWindow):
         self.start_frame = start_frame
         self.end_frame = end_frame
         self._update_interval_label()
-        self._check_save_enabled() 
+        self._check_save_enabled()
+
+    @Slot(bool)
+    def set_autoplay_state(self, is_playing):
+        """Update the autoplay button text based on state"""
+        self.autoplay_button.setText("Pause" if is_playing else "Play")
+        self.autoplay_button.setChecked(is_playing)

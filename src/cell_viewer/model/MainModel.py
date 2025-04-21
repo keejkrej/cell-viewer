@@ -49,11 +49,13 @@ class MainModel(QObject):
                         return True
             except Exception as e:
                 self.status_changed.emit(f"Error loading interval: {str(e)}")
+                return False
         return False
 
     def _save_interval(self):
         """Save interval to JSON file"""
         if self.file_path is None or self.start_frame is None or self.end_frame is None:
+            self.status_changed.emit("Error: No interval marked or no stack loaded")
             return False
             
         interval_file = self._get_interval_file_path()
@@ -86,13 +88,17 @@ class MainModel(QObject):
         
         # Handle both grayscale and RGB images
         if len(image.shape) == 2:  # Grayscale
-            if image.dtype != np.uint8:
+            if image.min() == image.max():
+                image = np.zeros_like(image, dtype=np.uint8)
+            else:
                 image = ((image - image.min()) / (image.max() - image.min()) * 255).astype(np.uint8)
         elif len(image.shape) == 3:  # RGB
-            if image.dtype != np.uint8:
-                # Normalize each channel independently
-                for i in range(3):
-                    channel = image[:,:,i]
+            # Normalize each channel independently
+            for i in range(3):
+                channel = image[:,:,i]
+                if channel.min() == channel.max():
+                    image[:,:,i] = np.zeros_like(channel, dtype=np.uint8)
+                else:
                     image[:,:,i] = ((channel - channel.min()) / (channel.max() - channel.min()) * 255).astype(np.uint8)
             
         return image
@@ -123,14 +129,15 @@ class MainModel(QObject):
         if 0 <= start_frame < self.total_frames and 0 <= end_frame < self.total_frames:
             self.start_frame = min(start_frame, end_frame)
             self.end_frame = max(start_frame, end_frame)
-            self._save_interval()  # Save interval to file
-            self.status_changed.emit(f"Interval set: {self.start_frame + 1} - {self.end_frame + 1}")
-            return True
+            if self._save_interval():  # Save interval to file
+                self.status_changed.emit(f"Interval set: {self.start_frame + 1} - {self.end_frame + 1}")
+                return True
+        self.status_changed.emit("Error: Invalid interval")
         return False
 
     @Slot(str)
-    def save_interval(self, file_path):
-        """Save the marked interval to a new TIFF file"""
+    def save_trimmed_stack(self, file_path):
+        """Save the trimmed stack to a new TIFF file"""
         if self.tiff_stack is None or self.start_frame is None or self.end_frame is None:
             self.status_changed.emit("Error: No interval marked or no stack loaded")
             return False
@@ -191,6 +198,7 @@ class MainModel(QObject):
                 self.status_changed.emit("Error: Not a valid TIFF stack")
                 return False
         except Exception as e:
+            self.stack_loaded.emit(False, 0, 0)
             self.status_changed.emit(f"Error loading file: {str(e)}")
             return False
 

@@ -2,9 +2,9 @@
 
 import sys
 from PySide6.QtWidgets import QApplication
-from .controller.MainController import MainController
 from .model.MainModel import MainModel
 from .view.MainView import MainView
+from .controller.MainController import MainController
 
 def main():
     app = QApplication(sys.argv)
@@ -14,8 +14,9 @@ def main():
     view = MainView()
     
     # Create controller with dependencies
-    controller = MainController(model, view)
-    controller.show()
+    MainController(model, view)
+    
+    view.show()
     sys.exit(app.exec())
 
 if __name__ == "__main__":

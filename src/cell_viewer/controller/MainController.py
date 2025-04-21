@@ -32,7 +32,7 @@ class MainController(QObject):
         self.view.file_selected.connect(self.model.load_file)
         self.view.frame_changed.connect(self.model.set_current_frame)
         self.view.interval_marked.connect(self.model.set_interval)
-        self.view.save_interval_requested.connect(self.model.save_interval)
+        self.view.save_interval_requested.connect(self.model.save_trimmed_stack)
         self.view.folder_selected.connect(self.model.set_current_folder)
         self.view.save_folder_selected.connect(self.model.set_save_folder)
         
@@ -40,18 +40,3 @@ class MainController(QObject):
         self.view.autoplay_toggled.connect(self.playback.handle_playback_toggle)
         self.playback.frame_advance_requested.connect(self.model.advance_frame)
         self.playback.autoplay_state_changed.connect(self.view.set_autoplay_state)
-        
-        # Show the view
-        self.view.set_visible(True)
-
-    # =====================================================================
-    # Public Methods
-    # =====================================================================
-
-    def show(self):
-        """Show the main window"""
-        self.view.show()
-
-    def close(self):
-        """Close the main window"""
-        self.view.close()

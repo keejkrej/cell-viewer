@@ -1,5 +1,6 @@
 """View module for the cell viewer application."""
 
+from typing import Optional
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QFileDialog,
                              QSlider, QStatusBar)
@@ -9,6 +10,7 @@ import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import numpy as np
 
 class MainView(QMainWindow):
     # Define signals
@@ -79,7 +81,7 @@ class MainView(QMainWindow):
         frame_layout.addWidget(self.slider, stretch=1)  # Slider takes most space
         
         # Frame counter
-        self.frame_label = QLabel("Frame: 0/0")
+        self.frame_label = QLabel("Frame: -/-")
         frame_layout.addWidget(self.frame_label)
         
         # Autoplay button
@@ -113,7 +115,7 @@ class MainView(QMainWindow):
         interval_layout.addWidget(self.end_frame_button)
         
         # Interval info label
-        self.interval_label = QLabel("Interval: Not set")
+        self.interval_label = QLabel("Interval: -/-")
         interval_layout.addWidget(self.interval_label, stretch=1)  # Label takes remaining space
         
         main_layout.addLayout(interval_layout)
@@ -166,8 +168,11 @@ class MainView(QMainWindow):
     # Private Methods
     # =====================================================================
 
-    def _load_folder(self, folder_path):
+    def _load_folder(self, folder_path: str) -> bool:
         """Load TIFF files from the selected folder"""
+        if not os.path.isdir(folder_path):
+            self.show_status_message("Invalid folder path")
+            return False
         self.current_folder = folder_path
         self.tiff_files = [f for f in os.listdir(folder_path) 
                           if f.lower().endswith(('.tif', '.tiff'))]
@@ -177,61 +182,70 @@ class MainView(QMainWindow):
             self.current_file_index = 0
             self._load_current_file()
             self._update_navigation_buttons()
+            return True
         else:
             self.current_file_index = -1
             self.file_label.setText("No TIFF files found")
             self._update_navigation_buttons()
+            return False
 
-    def _load_current_file(self):
+    def _load_current_file(self) -> bool:
         """Load the current file in the folder"""
         if 0 <= self.current_file_index < len(self.tiff_files):
             file_path = os.path.join(self.current_folder, self.tiff_files[self.current_file_index])
             self.file_label.setText(f"File: {self.tiff_files[self.current_file_index]}")
             self.file_selected.emit(file_path)
-
-    def _update_navigation_buttons(self):
+            return True
+        return False
+    
+    def _update_navigation_buttons(self) -> bool:
         """Update the state of navigation buttons"""
         self.prev_button.setEnabled(self.current_file_index > 0)
         self.next_button.setEnabled(self.current_file_index < len(self.tiff_files) - 1)
+        return True
 
-    def _get_file_path(self):
-        """Open file dialog and return selected file path"""
-        file_name, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open TIFF File",
-            "",
-            "TIFF Files (*.tif *.tiff)"
-        )
-        return file_name
-
-    def _set_slider_range(self, minimum, maximum):
-        """Set the slider range and enable it"""
-        self.slider.setRange(minimum, maximum)
+    def _on_successful_load(self, min_frame: int, max_frame: int) -> bool:
+        """Handle successful stack load"""
         self.slider.setEnabled(True)
         self.autoplay_button.setEnabled(True)
-        self.slider.setValue(minimum)
+        self.start_frame_button.setEnabled(True)
+        self.end_frame_button.setEnabled(True)
+        self.slider.setRange(min_frame, max_frame)
+        self.slider.setValue(min_frame)
+        return True
 
-    def _update_interval_label(self):
+    def _on_failed_load(self) -> bool:
+        """Handle failed stack load"""
+        self.slider.setEnabled(False)
+        self.autoplay_button.setEnabled(False)
+        self.start_frame_button.setEnabled(False)
+        self.end_frame_button.setEnabled(False)
+        self.slider.setRange(0, 0)
+        self.slider.setValue(0)
+
+    def _update_interval_label(self) -> bool:
         """Update the interval label with current start/end frames"""
         if self.start_frame is not None and self.end_frame is not None:
-            self.interval_label.setText(f"Interval: {self.start_frame + 1} - {self.end_frame + 1}")
+            self.interval_label.setText(f"Interval: {self.start_frame} - {self.end_frame}")
         elif self.start_frame is not None:
-            self.interval_label.setText(f"Start: {self.start_frame + 1}")
+            self.interval_label.setText(f"Start: {self.start_frame}")
         elif self.end_frame is not None:
-            self.interval_label.setText(f"End: {self.end_frame + 1}")
+            self.interval_label.setText(f"End: {self.end_frame}")
         else:
-            self.interval_label.setText("Interval: Not set")
+            self.interval_label.setText("Interval: -/-")
+            return False
+        return True
 
-    def _check_save_enabled(self):
+    def _check_save_enabled(self) -> bool:
         """Enable/disable save button based on interval state"""
         self.save_interval_button.setEnabled(
             self.start_frame is not None and 
             self.end_frame is not None and
             self.start_frame != self.end_frame
         )
-
+        return True
     @Slot()
-    def _handle_open_folder(self):
+    def _handle_open_folder(self) -> bool:
         """Handle opening a folder"""
         folder_path = QFileDialog.getExistingDirectory(
             self,
@@ -242,35 +256,43 @@ class MainView(QMainWindow):
         if folder_path:
             self.folder_selected.emit(folder_path)
             self._load_folder(folder_path)
+            return True
+        return False
 
     @Slot()
-    def _handle_prev_file(self):
+    def _handle_prev_file(self) -> bool:
         """Handle loading previous file"""
         if self.current_file_index > 0:
             self.current_file_index -= 1
             self._load_current_file()
             self._update_navigation_buttons()
+            return True
+        return False
 
     @Slot()
-    def _handle_next_file(self):
+    def _handle_next_file(self) -> bool:
         """Handle loading next file"""
         if self.current_file_index < len(self.tiff_files) - 1:
             self.current_file_index += 1
             self._load_current_file()
             self._update_navigation_buttons()
+            return True
+        return False
 
     @Slot()
-    def _handle_slider_change(self, value):
+    def _handle_slider_change(self, value: int) -> bool:
         """Internal slot to handle slider value changes"""
         self.frame_changed.emit(value)
+        return True
 
     @Slot(bool)
-    def _handle_autoplay_toggle(self, checked):
+    def _handle_autoplay_toggle(self, checked: bool) -> bool:
         """Internal slot to handle autoplay button toggle"""
         self.autoplay_toggled.emit(checked)
+        return True
 
     @Slot()
-    def _handle_mark_start(self):
+    def _handle_mark_start(self) -> bool:
         """Handle marking the start frame"""
         current_frame = self.slider.value()
         self.start_frame = current_frame
@@ -278,9 +300,10 @@ class MainView(QMainWindow):
         self._check_save_enabled()
         if self.end_frame is not None:
             self.interval_marked.emit(self.start_frame, self.end_frame)
+        return True
 
     @Slot()
-    def _handle_mark_end(self):
+    def _handle_mark_end(self) -> bool:
         """Handle marking the end frame"""
         current_frame = self.slider.value()
         self.end_frame = current_frame
@@ -288,9 +311,9 @@ class MainView(QMainWindow):
         self._check_save_enabled()
         if self.start_frame is not None:
             self.interval_marked.emit(self.start_frame, self.end_frame)
-
+        return True
     @Slot()
-    def _handle_set_save_folder(self):
+    def _handle_set_save_folder(self) -> bool:
         """Handle setting the save folder"""
         folder_path = QFileDialog.getExistingDirectory(
             self,
@@ -301,13 +324,14 @@ class MainView(QMainWindow):
         if folder_path:
             self.save_folder = folder_path
             self.save_folder_selected.emit(folder_path)
+            return True
 
     @Slot()
-    def _handle_save_interval(self):
+    def _handle_save_interval(self) -> bool:
         """Handle saving the marked interval"""
         if self.save_folder is None:
             self.show_status_message("Please set a save folder first")
-            return
+            return False
             
         if self.current_file_index >= 0 and self.tiff_files:
             # Generate save filename based on current file
@@ -315,16 +339,21 @@ class MainView(QMainWindow):
             base_name = os.path.splitext(current_file)[0]
             save_path = os.path.join(self.save_folder, f"{base_name}_trimmed.tif")
             self.save_interval_requested.emit(save_path)
+            return True
+        
 
     # =====================================================================
     # Public Methods
     # =====================================================================
 
     @Slot(object)
-    def show_image(self, image):
+    def show_image(self, image: Optional[np.ndarray]) -> bool:
         """Display the given image using matplotlib"""
         if image is None:
-            return
+            self.img_display = None
+            self.figure.clear()
+            self.canvas.draw()
+            return False
             
         if self.img_display is None:
             # First time: create the image display
@@ -338,68 +367,49 @@ class MainView(QMainWindow):
             self.img_display.set_data(image)
             if len(image.shape) == 2:  # Grayscale
                 self.img_display.set_clim(vmin=image.min(), vmax=image.max())
-            else:  # RGB
-                # For RGB, we don't need to set clim as the values are already normalized
-                pass
             
-        # Force the canvas to update
         self.canvas.draw()
+        return True
 
     @Slot(int, int)
-    def update_frame_info(self, current, total):
+    def update_frame_info(self, current: int, total: int) -> bool:
         """Update the frame information display and slider position"""
         self.frame_label.setText(f"Frame: {current}/{total}")
         
         # Update slider position without triggering valueChanged
         self.slider.blockSignals(True)
-        self.slider.setValue(current - 1)  # Convert to 0-based index
+        self.slider.setValue(current)
         self.slider.blockSignals(False)
+        return True
 
     @Slot(str)
-    def show_status_message(self, message):
+    def show_status_message(self, message: str) -> bool:
         """Show a message in the status bar"""
         self.statusBar.showMessage(message)
+        return True
 
     @Slot(bool, int, int)
-    def handle_stack_loaded(self, has_stack, min_frame, max_frame):
+    def handle_stack_loaded(self, has_stack: bool, min_frame: int, max_frame: int) -> bool:
         """Handle stack loaded state"""
         if has_stack:
-            self.slider.setEnabled(True)
-            self.autoplay_button.setEnabled(True)
-            self.start_frame_button.setEnabled(True)
-            self.end_frame_button.setEnabled(True)
-            self.img_display = None  # Reset image display for new stack
-            self._set_slider_range(min_frame, max_frame)
+            self._on_successful_load(min_frame, max_frame)
+            return True
         else:
-            self.slider.setEnabled(False)
-            self.autoplay_button.setEnabled(False)
-            self.start_frame_button.setEnabled(False)
-            self.end_frame_button.setEnabled(False)
-            self.save_interval_button.setEnabled(False)
-            self.slider.setRange(0, 0)
-            self.frame_label.setText("Frame: 0/0")
-            self.interval_label.setText("Interval: Not set")
-            self.start_frame = None
-            self.end_frame = None
+            self._on_failed_load()
+            return False
 
     @Slot(int, int)
-    def update_interval_display(self, start_frame, end_frame):
+    def update_interval_display(self, start_frame: int, end_frame: int) -> bool:
         """Update the interval display with loaded values"""
-        if start_frame == -1 and end_frame == -1:
-            # No interval loaded
-            self.start_frame = None
-            self.end_frame = None
-            self._update_interval_label()
-            self._check_save_enabled()
-            return
-            
         self.start_frame = start_frame
         self.end_frame = end_frame
         self._update_interval_label()
         self._check_save_enabled()
+        return True
 
     @Slot(bool)
-    def set_autoplay_state(self, is_playing):
+    def set_autoplay_state(self, is_playing: bool) -> bool:
         """Update the autoplay button text based on state"""
         self.autoplay_button.setText("Pause" if is_playing else "Play")
         self.autoplay_button.setChecked(is_playing)
+        return True

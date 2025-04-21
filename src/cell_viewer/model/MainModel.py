@@ -1,5 +1,6 @@
 """Model module for the cell viewer application."""
 
+from typing import Optional
 from PySide6.QtCore import QObject, Signal, Slot
 import numpy as np
 from tifffile import imread, imwrite
@@ -29,13 +30,13 @@ class MainModel(QObject):
     # Private Methods
     # =====================================================================
 
-    def _get_interval_file_path(self):
+    def _get_interval_file_path(self) -> Optional[str]:
         """Get the path to the interval JSON file"""
         if self.file_path is None:
             return None
         return os.path.splitext(self.file_path)[0] + '_interval.json'
 
-    def _load_interval(self):
+    def _load_interval(self) -> bool:
         """Load interval from JSON file"""
         interval_file = self._get_interval_file_path()
         if interval_file and os.path.exists(interval_file):
@@ -52,7 +53,7 @@ class MainModel(QObject):
                 return False
         return False
 
-    def _save_interval(self):
+    def _save_interval(self) -> bool:
         """Save interval to JSON file"""
         if self.file_path is None or self.start_frame is None or self.end_frame is None:
             self.status_changed.emit("Error: No interval marked or no stack loaded")
@@ -70,50 +71,55 @@ class MainModel(QObject):
             self.status_changed.emit(f"Error saving interval: {str(e)}")
             return False
 
-    def _update_view(self):
+    def _update_view(self) -> bool:
         """Update all view-related signals"""
         # Emit current image
         current_image = self._get_normalized_image()
         self.image_changed.emit(current_image)
         
         # Emit frame info
-        self.frame_info_changed.emit(self.current_frame + 1, self.total_frames)
+        self.frame_info_changed.emit(self.current_frame, self.total_frames)
+        return True
 
-    def _get_normalized_image(self):
+    def _get_normalized_image(self) -> Optional[np.ndarray]:
         """Get the current frame image, normalized to 8-bit"""
         if self.tiff_stack is None:
             return None
             
-        image = self.tiff_stack[self.current_frame]
-        
-        # Handle both grayscale and RGB images
-        if len(image.shape) == 2:  # Grayscale
-            if image.min() == image.max():
-                image = np.zeros_like(image, dtype=np.uint8)
-            else:
-                image = ((image - image.min()) / (image.max() - image.min()) * 255).astype(np.uint8)
-        elif len(image.shape) == 3:  # RGB
-            # Normalize each channel independently
-            for i in range(3):
-                channel = image[:,:,i]
-                if channel.min() == channel.max():
-                    image[:,:,i] = np.zeros_like(channel, dtype=np.uint8)
-                else:
-                    image[:,:,i] = ((channel - channel.min()) / (channel.max() - channel.min()) * 255).astype(np.uint8)
+        try:
+            image = self.tiff_stack[self.current_frame]
             
-        return image
+            # Handle both grayscale and RGB images
+            if len(image.shape) == 2:  # Grayscale
+                if image.min() == image.max():
+                    image = np.zeros_like(image, dtype=np.uint8)
+                else:
+                    image = ((image - image.min()) / (image.max() - image.min()) * 255).astype(np.uint8)
+            elif len(image.shape) == 3:  # RGB
+                # Normalize each channel independently
+                for i in range(3):
+                    channel = image[:,:,i]
+                    if channel.min() == channel.max():
+                        image[:,:,i] = np.zeros_like(channel, dtype=np.uint8)
+                    else:
+                        image[:,:,i] = ((channel - channel.min()) / (channel.max() - channel.min()) * 255).astype(np.uint8)
+            return image
+        except Exception as e:
+            self.status_changed.emit(f"Error getting normalized image: {str(e)}")
+            return None
+            
 
-    def _get_next_frame(self):
+    def _get_next_frame(self) -> Optional[int]:
         """Get the next frame number (with wrapping)"""
         if self.tiff_stack is None:
             return None
         return (self.current_frame + 1) % self.total_frames
 
-    def _has_stack(self):
+    def _has_stack(self) -> bool:
         """Check if a valid stack is loaded"""
         return self.tiff_stack is not None
 
-    def _get_frame_limits(self):
+    def _get_frame_limits(self) -> tuple[int, int]:
         """Get the minimum and maximum frame numbers"""
         if self.tiff_stack is None:
             return 0, 0
@@ -124,19 +130,19 @@ class MainModel(QObject):
     # =====================================================================
 
     @Slot(int, int)
-    def set_interval(self, start_frame, end_frame):
+    def set_interval(self, start_frame: int, end_frame: int) -> bool:
         """Set the interval for saving"""
         if 0 <= start_frame < self.total_frames and 0 <= end_frame < self.total_frames:
             self.start_frame = min(start_frame, end_frame)
             self.end_frame = max(start_frame, end_frame)
             if self._save_interval():  # Save interval to file
-                self.status_changed.emit(f"Interval set: {self.start_frame + 1} - {self.end_frame + 1}")
+                self.status_changed.emit(f"Interval set: {self.start_frame} - {self.end_frame}")
                 return True
         self.status_changed.emit("Error: Invalid interval")
         return False
 
     @Slot(str)
-    def save_trimmed_stack(self, file_path):
+    def save_trimmed_stack(self, file_path: str) -> bool:
         """Save the trimmed stack to a new TIFF file"""
         if self.tiff_stack is None or self.start_frame is None or self.end_frame is None:
             self.status_changed.emit("Error: No interval marked or no stack loaded")
@@ -155,7 +161,7 @@ class MainModel(QObject):
             return False
 
     @Slot(str)
-    def load_file(self, file_path):
+    def load_file(self, file_path: str) -> bool:
         """Load a TIFF file and return success status"""
         try:
             self.tiff_stack = imread(file_path)
@@ -186,17 +192,19 @@ class MainModel(QObject):
             self.start_frame = None
             self.end_frame = None
             if not self._load_interval():  # If no interval file exists
-                self.interval_loaded.emit(-1, -1)  # Signal that no interval was loaded
+                self.interval_loaded.emit(None, None)  # Signal that no interval was loaded
                 
             self._update_view()
             return True
         except Exception as e:
-            self.stack_loaded.emit(False, -1, -1)
+            self.stack_loaded.emit(False, None, None)
+            self.interval_loaded.emit(None, None)
+            self._update_view()
             self.status_changed.emit(f"Error loading file: {str(e)}")
             return False
 
     @Slot(int)
-    def set_current_frame(self, frame):
+    def set_current_frame(self, frame: int) -> bool:
         """Set the current frame number"""
         if 0 <= frame < self.total_frames:
             self.current_frame = frame
@@ -205,21 +213,23 @@ class MainModel(QObject):
         return False
 
     @Slot()
-    def advance_frame(self):
+    def advance_frame(self) -> bool:
         """Handle frame advancement signal"""
         if self._has_stack():
             next_frame = self._get_next_frame()
             if next_frame is not None:
                 self.set_current_frame(next_frame)
+            return True
+        return False
 
     @Slot(str)
-    def set_current_folder(self, folder_path):
+    def set_current_folder(self, folder_path: str) -> None:
         """Set the current folder and update status"""
         self.current_folder = folder_path
         self.status_changed.emit(f"Selected folder: {folder_path}")
 
     @Slot(str)
-    def set_save_folder(self, folder_path):
+    def set_save_folder(self, folder_path: str) -> None:
         """Set the save folder and update status"""
         self.save_folder = folder_path
         self.status_changed.emit(f"Save folder set to: {folder_path}") 

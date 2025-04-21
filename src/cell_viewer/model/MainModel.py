@@ -160,45 +160,38 @@ class MainModel(QObject):
         try:
             self.tiff_stack = imread(file_path)
             # Handle different stack types
-            if len(self.tiff_stack.shape) == 3:
+            if len(self.tiff_stack.shape) == 2:
+                # Grayscale image: [height, width]
+                self.tiff_stack = self.tiff_stack[np.newaxis, :, :]
+                self.total_frames = 1
+                self.status_changed.emit(f"Loaded grayscale image: {file_path}")
+            elif len(self.tiff_stack.shape) == 3:
                 # Grayscale stack: [frames, height, width]
                 self.total_frames = self.tiff_stack.shape[0]
-                self.current_frame = 0
-                self.file_path = file_path
                 self.status_changed.emit(f"Loaded grayscale stack: {file_path}")
-                min_frame, max_frame = self._get_frame_limits()
-                self.stack_loaded.emit(True, min_frame, max_frame)
-                # Reset interval state before trying to load
-                self.start_frame = None
-                self.end_frame = None
-                if not self._load_interval():  # If no interval file exists
-                    self.interval_loaded.emit(-1, -1)  # Signal that no interval was loaded
-                self._update_view()
-                return True
-            elif len(self.tiff_stack.shape) == 4:
+            elif len(self.tiff_stack.shape) == 4 and self.tiff_stack.shape[3] == 3:
                 # RGB stack: [frames, height, width, channels]
-                if self.tiff_stack.shape[3] == 3:  # Check for RGB channels
-                    self.total_frames = self.tiff_stack.shape[0]
-                    self.current_frame = 0
-                    self.file_path = file_path
-                    self.status_changed.emit(f"Loaded RGB stack: {file_path}")
-                    min_frame, max_frame = self._get_frame_limits()
-                    self.stack_loaded.emit(True, min_frame, max_frame)
-                    # Reset interval state before trying to load
-                    self.start_frame = None
-                    self.end_frame = None
-                    if not self._load_interval():  # If no interval file exists
-                        self.interval_loaded.emit(-1, -1)  # Signal that no interval was loaded
-                    self._update_view()
-                    return True
-                else:
-                    self.status_changed.emit("Error: Unsupported number of color channels")
-                    return False
+                self.total_frames = self.tiff_stack.shape[0]
+                self.status_changed.emit(f"Loaded RGB stack: {file_path}")
             else:
-                self.status_changed.emit("Error: Not a valid TIFF stack")
-                return False
+                raise ValueError(f"Unsupported stack format: {self.tiff_stack.shape}")
+
+            # Common operations for all valid stack types
+            self.current_frame = 0
+            self.file_path = file_path
+            min_frame, max_frame = self._get_frame_limits()
+            self.stack_loaded.emit(True, min_frame, max_frame)
+            
+            # Reset interval state before trying to load
+            self.start_frame = None
+            self.end_frame = None
+            if not self._load_interval():  # If no interval file exists
+                self.interval_loaded.emit(-1, -1)  # Signal that no interval was loaded
+                
+            self._update_view()
+            return True
         except Exception as e:
-            self.stack_loaded.emit(False, 0, 0)
+            self.stack_loaded.emit(False, -1, -1)
             self.status_changed.emit(f"Error loading file: {str(e)}")
             return False
 

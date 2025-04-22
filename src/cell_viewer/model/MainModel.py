@@ -174,17 +174,21 @@ class MainModel(QObject):
         if self.tiff_stack is None:
             return None
             
-        image = self.tiff_stack[self.current_frame]
+        image = np.copy(self.tiff_stack[self.current_frame])
         
         # Handle both grayscale and RGB images
         if len(image.shape) == 2:  # Grayscale
-            if image.dtype != np.uint8:
+            if image.max() == image.min():
+                image = np.zeros_like(image)
+            else:
                 image = ((image - image.min()) / (image.max() - image.min()) * 255).astype(np.uint8)
         elif len(image.shape) == 3:  # RGB
-            if image.dtype != np.uint8:
-                # Normalize each channel independently
-                for i in range(3):
-                    channel = image[:,:,i]
+            # Normalize each channel independently
+            for i in range(3):
+                channel = image[:,:,i]
+                if channel.max() == channel.min():
+                    image[:,:,i] = np.zeros_like(channel)
+                else:
                     image[:,:,i] = ((channel - channel.min()) / (channel.max() - channel.min()) * 255).astype(np.uint8)
             
         return image

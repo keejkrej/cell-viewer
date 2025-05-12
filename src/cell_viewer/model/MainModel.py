@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import QObject, Signal, Slot
 import numpy as np
-from tifffile import imread, imwrite
+from imageio.v3 import imread, imwrite
 import json
 import os
 

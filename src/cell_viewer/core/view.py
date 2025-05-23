@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout,
 from PySide6.QtCore import Qt, Signal, Slot, QTimer
 import os
 import matplotlib
+import numpy as np
 matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -232,7 +233,7 @@ class MainView(QMainWindow):
         """Internal slot to handle autoplay button toggle"""
         self.autoplay_toggled.emit(checked)
 
-    @Slot(object)
+    @Slot(np.ndarray)
     def show_image(self, image):
         """Display the given image using matplotlib"""
         if image is None:
@@ -313,9 +314,9 @@ class MainView(QMainWindow):
             self.hide()
 
     @Slot(bool, int, int)
-    def handle_stack_loaded(self, has_stack, min_frame, max_frame):
+    def handle_stack_loaded(self, min_frame, max_frame):
         """Handle stack loaded state"""
-        if has_stack:
+        if min_frame != -1 and max_frame != -1:
             self.slider.setEnabled(True)
             self.autoplay_button.setEnabled(True)
             self.start_frame_button.setEnabled(True)
@@ -384,11 +385,11 @@ class MainView(QMainWindow):
 
     def _update_interval_label(self):
         """Update the interval label with current start/end frames"""
-        if self.start_frame is not None and self.end_frame is not None:
+        if self.start_frame != -1 and self.end_frame != -1:
             self.interval_label.setText(f"Interval: {self.start_frame + 1} - {self.end_frame + 1}")
-        elif self.start_frame is not None:
+        elif self.start_frame != -1:
             self.interval_label.setText(f"Start: {self.start_frame + 1}")
-        elif self.end_frame is not None:
+        elif self.end_frame != -1:
             self.interval_label.setText(f"End: {self.end_frame + 1}")
         else:
             self.interval_label.setText("Interval: Not set")
@@ -396,22 +397,14 @@ class MainView(QMainWindow):
     def _check_save_enabled(self):
         """Enable/disable save button based on interval state"""
         self.save_interval_button.setEnabled(
-            self.start_frame is not None and 
-            self.end_frame is not None and
+            self.start_frame != -1 and 
+            self.end_frame != -1 and
             self.start_frame != self.end_frame
         )
 
     @Slot(int, int)
     def update_interval_display(self, start_frame, end_frame):
         """Update the interval display with loaded values"""
-        if start_frame == -1 and end_frame == -1:
-            # No interval loaded
-            self.start_frame = None
-            self.end_frame = None
-            self._update_interval_label()
-            self._check_save_enabled()
-            return
-            
         self.start_frame = start_frame
         self.end_frame = end_frame
         self._update_interval_label()

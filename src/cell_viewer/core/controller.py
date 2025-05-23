@@ -1,9 +1,9 @@
-"""Main controller module for the cell viewer application."""
+"""Controller module for the cell viewer application."""
 
-from PySide6.QtCore import QObject, Slot
-from ..service.PlaybackService import PlaybackService
-from ..model.MainModel import MainModel
-from ..view.MainView import MainView
+from PySide6.QtCore import QObject
+from .service import PlaybackService
+from .model import MainModel
+from .view import MainView
 
 class MainController(QObject):
     """Main controller for the cell viewer application."""

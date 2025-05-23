@@ -2,7 +2,7 @@
 
 import sys
 from PySide6.QtWidgets import QApplication
-from .controller.MainController import MainController
+from .core.controller import MainController
 
 def main():
     app = QApplication(sys.argv)

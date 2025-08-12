@@ -4,19 +4,18 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cell-viewer"
-version = "1.0.0"
-description = "A PySide6-based TIFF stack viewer which allows user to set start and end frame and save the interval as a new TIFF file"
+version = "1.1.0"
+description = "A PySide6-based NPY viewer which allows user to set start and end frame and save the interval as a new NPY file"
 readme = "README.md"
-requires-python = ">=3.12,<=3.13"
+requires-python = ">=3.11"
 license = "MIT"
 authors = [
     { name = "Tianyi Cao", email = "ctyjackcao@outlook.com" }
 ]
 dependencies = [
-    "PySide6==6.9.0",
-    "numpy==1.26.4",
-    "matplotlib==3.10.3",
-    "imageio==2.37.0",
+    "PySide6",
+    "numpy",
+    "matplotlib",
 ]
 
 [tool.hatch.build.targets.wheel]

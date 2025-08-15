@@ -115,7 +115,7 @@ class MainWindow(QMainWindow):
         frame_layout.addWidget(channel_label)
         
         self.channel_selector = QComboBox()
-        self.channel_selector.addItems(["Pattern (0)", "Nuclei (1)", "Cyto (2)"])
+        # Will be populated dynamically when file is loaded
         self.channel_selector.setEnabled(False)
         self.channel_selector.currentIndexChanged.connect(self._handle_channel_change)
         frame_layout.addWidget(self.channel_selector)
@@ -223,9 +223,10 @@ class MainWindow(QMainWindow):
     def _normalize_stack(self, stack):
         """Normalize each channel using 1st and 99th percentiles of positive values"""
         normalized_stack = np.zeros(stack.shape, dtype=np.uint8)
+        num_channels = stack.shape[1]
         
         # Process each channel separately
-        for c in range(3):
+        for c in range(num_channels):
             channel_data = stack[:, c, :, :]  # Get all frames for this channel (t, y, x)
             
             # Get only positive values for percentile calculation
@@ -257,13 +258,17 @@ class MainWindow(QMainWindow):
         """Load a NPY file"""
         try:
             self.original_stack = np.load(file_path)
-            if len(self.original_stack.shape) != 4 or self.original_stack.shape[1] != 3:
-                self.statusBar.showMessage("Error: Not a valid pattern, nuclei, cyto stack")
+            if len(self.original_stack.shape) != 4:
+                self.statusBar.showMessage("Error: Stack must be 4D (time, channels, height, width)")
                 self._reset_stack_state()
                 return
             
+            # Get number of channels and update selector
+            num_channels = self.original_stack.shape[1]
+            self._update_channel_selector(num_channels)
+            
             # Normalize the stack for display
-            self.statusBar.showMessage("Normalizing stack...")
+            self.statusBar.showMessage(f"Normalizing stack with {num_channels} channels...")
             self.stack = self._normalize_stack(self.original_stack)
                 
             self.total_frames = self.stack.shape[0]
@@ -285,7 +290,7 @@ class MainWindow(QMainWindow):
             self.channel_selector.setEnabled(True)
             self.img_display = None  # Reset image display for new stack
             
-            self.statusBar.showMessage(f"Loaded stack: {file_path}")
+            self.statusBar.showMessage(f"Loaded stack: {file_path} ({num_channels} channels)")
             self._update_view()
             
         except Exception as e:
@@ -354,6 +359,20 @@ class MainWindow(QMainWindow):
             self.slider.setValue(0)
             self._update_view()
             
+    def _update_channel_selector(self, num_channels):
+        """Update channel selector with available channels"""
+        self.channel_selector.blockSignals(True)
+        self.channel_selector.clear()
+        
+        # Add channel options dynamically
+        for i in range(num_channels):
+            self.channel_selector.addItem(f"Channel {i}")
+        
+        # Reset to first channel
+        self.current_channel = 0
+        self.channel_selector.setCurrentIndex(0)
+        self.channel_selector.blockSignals(False)
+        
     def _handle_channel_change(self, index):
         """Handle channel selection change"""
         self.current_channel = index

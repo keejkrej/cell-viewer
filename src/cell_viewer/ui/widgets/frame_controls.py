@@ -37,7 +37,7 @@ class FrameControls(QWidget):
         layout.addWidget(channel_label)
         
         self.channel_selector = QComboBox()
-        self.channel_selector.addItems(["Pattern (0)", "Nuclei (1)", "Cyto (2)"])
+        # Will be populated dynamically when file is loaded
         self.channel_selector.setFixedWidth(150)
         self.channel_selector.setEnabled(False)
         self.channel_selector.currentIndexChanged.connect(self.channel_changed.emit)
@@ -79,6 +79,19 @@ class FrameControls(QWidget):
     def get_current_frame(self) -> int:
         """Get the current frame value"""
         return self.slider.value()
+        
+    def update_channel_selector(self, num_channels: int):
+        """Update channel selector with available channels"""
+        self.channel_selector.blockSignals(True)
+        self.channel_selector.clear()
+        
+        # Add channel options dynamically
+        for i in range(num_channels):
+            self.channel_selector.addItem(f"Channel {i}")
+        
+        # Reset to first channel
+        self.channel_selector.setCurrentIndex(0)
+        self.channel_selector.blockSignals(False)
         
     def get_current_channel(self) -> int:
         """Get the current channel selection"""

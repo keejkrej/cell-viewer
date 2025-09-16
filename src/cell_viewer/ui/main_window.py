@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PySide6.QtCore import Qt, QTimer
 import os
 import json
+import yaml
 import matplotlib
 import numpy as np
 matplotlib.use('Qt5Agg')
@@ -31,6 +32,10 @@ class MainWindow(QMainWindow):
         self.current_channel = 0
         self.current_file_index = -1
         self.npy_files = []
+
+        # Metadata from YAML
+        self.channel_names: list[str] | None = None
+        self.segmentation_channel_index: int | None = None
         
         # UI state
         self.img_display = None
@@ -221,13 +226,21 @@ class MainWindow(QMainWindow):
             self._load_file(file_path)
             
     def _normalize_stack(self, stack):
-        """Normalize each channel using 1st and 99th percentiles of positive values"""
+        """Normalize each channel using 1st and 99.9th percentiles of positive values.
+        Segmentation channel (if any) is NOT normalized here and will be displayed from original data.
+        """
         normalized_stack = np.zeros(stack.shape, dtype=np.uint8)
         num_channels = stack.shape[1]
         
         # Process each channel separately
         for c in range(num_channels):
-            channel_data = stack[:, c, :, :]  # Get all frames for this channel (t, y, x)
+            # Skip normalization for segmentation channel
+            if self.segmentation_channel_index is not None and c == self.segmentation_channel_index:
+                # Leave zeros; segmentation will be rendered from original_stack
+                normalized_stack[:, c, :, :] = 0
+                continue
+
+            channel_data = stack[:, c, :, :]  # (t, y, x)
             
             # Get only positive values for percentile calculation
             positive_mask = channel_data > 0
@@ -262,12 +275,31 @@ class MainWindow(QMainWindow):
                 self.statusBar.showMessage("Error: Stack must be 4D (time, channels, height, width)")
                 self._reset_stack_state()
                 return
+
+            # Attempt to read sidecar YAML metadata (same basename)
+            self.channel_names = None
+            self.segmentation_channel_index = None
+            metadata_path = os.path.splitext(file_path)[0] + '.yaml'
+            if os.path.exists(metadata_path):
+                try:
+                    with open(metadata_path, 'r') as f:
+                        meta = yaml.safe_load(f) or {}
+                    ch = meta.get('channels')
+                    if isinstance(ch, list) and all(isinstance(x, str) for x in ch):
+                        self.channel_names = ch
+                        # Find 'segmentation' channel by exact name (case-insensitive match also)
+                        for i, name in enumerate(ch):
+                            if name == 'segmentation' or name.lower().strip() == 'segmentation':
+                                self.segmentation_channel_index = i
+                                break
+                except Exception as e:
+                    self.statusBar.showMessage(f"Warning: Failed to load YAML metadata: {e}")
             
             # Get number of channels and update selector
             num_channels = self.original_stack.shape[1]
             self._update_channel_selector(num_channels)
             
-            # Normalize the stack for display
+            # Normalize the stack for display (non-segmentation channels only)
             self.statusBar.showMessage(f"Normalizing stack with {num_channels} channels...")
             self.stack = self._normalize_stack(self.original_stack)
                 
@@ -301,6 +333,8 @@ class MainWindow(QMainWindow):
         """Reset the stack-related state"""
         self.stack = None
         self.original_stack = None
+        self.channel_names = None
+        self.segmentation_channel_index = None
         self.slider.setEnabled(False)
         self.autoplay_button.setEnabled(False)
         self.start_frame_button.setEnabled(False)
@@ -364,9 +398,23 @@ class MainWindow(QMainWindow):
         self.channel_selector.blockSignals(True)
         self.channel_selector.clear()
         
-        # Add channel options dynamically
-        for i in range(num_channels):
-            self.channel_selector.addItem(f"Channel {i}")
+        # Add channel options dynamically, prefer names from YAML if available
+        if self.channel_names and len(self.channel_names) == num_channels:
+            for i, name in enumerate(self.channel_names):
+                label = name
+                if (
+                    self.segmentation_channel_index is not None
+                    and i == self.segmentation_channel_index
+                    and name.lower().strip() != 'segmentation'
+                ):
+                    label += " (segmentation)"
+                self.channel_selector.addItem(label)
+        else:
+            for i in range(num_channels):
+                suffix = " (segmentation)" if (
+                    self.segmentation_channel_index is not None and i == self.segmentation_channel_index
+                ) else ""
+                self.channel_selector.addItem(f"Channel {i}{suffix}")
         
         # Reset to first channel
         self.current_channel = 0
@@ -377,7 +425,12 @@ class MainWindow(QMainWindow):
         """Handle channel selection change"""
         self.current_channel = index
         self._update_view()
-        self.statusBar.showMessage(f"Channel {index} selected")
+        # Status shows selected channel name if available
+        if self.channel_names and 0 <= index < len(self.channel_names):
+            name = self.channel_names[index]
+        else:
+            name = f"Channel {index}"
+        self.statusBar.showMessage(f"Channel selected: {name}")
         
     def _update_view(self):
         """Update the display with current frame and channel"""
@@ -385,19 +438,77 @@ class MainWindow(QMainWindow):
             return
             
         try:
-            # Get current image
-            current_image = self.stack[self.current_frame]  # (c, h, w)
-            
-            # Extract the selected channel
-            display_image = current_image[self.current_channel]  # (h, w)
-            
-            if self.img_display is None:
-                # First time: create the image display with fixed range 0-255
-                self.img_display = self.ax.imshow(display_image, cmap='gray', aspect='equal', vmin=0, vmax=255)
-                self.figure.subplots_adjust(left=0, right=1, top=1, bottom=0)
+            from matplotlib import colors
+
+            is_seg = (
+                self.segmentation_channel_index is not None and
+                self.current_channel == self.segmentation_channel_index
+            )
+
+            if is_seg:
+                # Render segmentation from original (unnormalized), categorical with a discrete colormap
+                label_img = self.original_stack[self.current_frame, self.current_channel, :, :]
+                # Ensure integer labels
+                if np.issubdtype(label_img.dtype, np.floating):
+                    label_img = np.round(label_img).astype(np.int64)
+                else:
+                    label_img = label_img.astype(np.int64)
+
+                max_label = int(label_img.max()) if label_img.size else 0
+                n_classes = max(2, max_label + 1)  # include background 0
+
+                # Build a ListedColormap: background black, then tab20 colors cycling
+                from matplotlib import cm
+                base = cm.get_cmap('tab20', 20)
+                colors_list = [(0.0, 0.0, 0.0, 1.0)]  # label 0 = black
+                for i in range(1, n_classes):
+                    colors_list.append(base((i - 1) % 20))
+                cmap = matplotlib.colors.ListedColormap(colors_list, name='seg_cmap', N=n_classes)
+
+                # Discrete boundaries for integer labels 0..max_label
+                boundaries = np.arange(-0.5, max_label + 1.5, 1)
+                norm = colors.BoundaryNorm(boundaries, ncolors=cmap.N, clip=True)
+
+                recreate = (
+                    self.img_display is None or getattr(self, "_last_mode_seg", None) is not True
+                )
+                if recreate:
+                    self.ax.clear()
+                    self.ax.axis('off')
+                    self.img_display = self.ax.imshow(
+                        label_img,
+                        cmap=cmap,
+                        norm=norm,
+                        interpolation='nearest'
+                    )
+                    self.figure.subplots_adjust(left=0, right=1, top=1, bottom=0)
+                else:
+                    self.img_display.set_cmap(cmap)
+                    self.img_display.set_norm(norm)
+                    self.img_display.set_data(label_img)
+                self._last_mode_seg = True
             else:
-                # Update existing image data (already normalized to 0-255)
-                self.img_display.set_data(display_image)
+                # Continuous path: use normalized stack, grayscale 0..255
+                current_image = self.stack[self.current_frame]  # (c, h, w)
+                display_image = current_image[self.current_channel]  # (h, w)
+
+                recreate = (
+                    self.img_display is None or getattr(self, "_last_mode_seg", None) is True
+                )
+                if recreate:
+                    self.ax.clear()
+                    self.ax.axis('off')
+                    self.img_display = self.ax.imshow(
+                        display_image,
+                        cmap='gray',
+                        aspect='equal',
+                        vmin=0,
+                        vmax=255
+                    )
+                    self.figure.subplots_adjust(left=0, right=1, top=1, bottom=0)
+                else:
+                    self.img_display.set_data(display_image)
+                self._last_mode_seg = False
                 
             # Force the canvas to update
             self.canvas.draw()
